@@ -84,15 +84,15 @@ pub const Server = struct {
         const res = Res.init(this.allocator) catch unreachable;
         defer res.deinit();
 
-        _ = res.setVersion(req.version);
+        _ = res.setStatus(.Not_Found).setVersion(req.version);
 
         // handlers
         if (this.routes.get(req.uri)) |handlers| {
+            _ = res.setStatus(.Ok);
+
             handlers.execute(req, res) catch |err| {
                 errorHandler(err, req, res);
             };
-        } else {
-            res.status = .Not_Found;
         }
 
         response(connection, res) catch unreachable;
