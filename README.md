@@ -62,6 +62,7 @@ pub fn main() !void {
     defer app.deinit();
 
     try app.use("/users", .{ .middlewares = &.{getMiddleware}, .handler = getHandler });
+    // TODO: Name it set until the implementation of methods routers.
     try app.use("/users/set", .{ .middlewares = &.{setMiddleware}, .handler = setHandler });
 
     try app.listen(8080, errorHandler);
@@ -74,9 +75,9 @@ fn errorHandler(err: anyerror, req: *zexpress.Req, res: *zexpress.Res) void {
 
     // Has the responsibility to handle all errors.
     switch (err) {
-        else => {
-            var errName = @errorName(err);
-            const message = std.mem.replaceScalar(u8, @constCast(errName), '_', ' ');
+         else => |errValue| {
+            const errName = @errorName(errValue);
+            const message = std.mem.replaceOwned(u8, res.allocator, errName, "_", " ") catch unreachable;
 
             _ = res.json(.{ .status = res.status.toNumber(), .message = message }) catch unreachable;
         },
