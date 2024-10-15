@@ -21,6 +21,7 @@ zig fetch --save git+https://github.com/ahmdhusam/zexpress.git
 3. Update your `build.zig` file to include ZExpress:
 
 ```zig
+pub fn build(b: *std.Build) void {
     // ... existing code ...
 
     const exe = b.addExecutable(.{
