@@ -1,1 +1,1 @@
-pub usingnamespace @import("../zexpress/index.zig");
+pub usingnamespace @import("server.zig");
