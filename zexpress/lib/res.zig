@@ -126,10 +126,12 @@ pub const Status = enum(u16) {
         return @intFromEnum(this);
     }
 
-    pub fn toString(this: Self) []const u8 {
-        switch (this) {
+    pub fn toString(this: *Self) ![]const u8 {
+        switch (this.*) {
             inline else => |v| {
-                const name = @constCast(@tagName(v));
+                const res: *Res = @alignCast(@fieldParentPtr("status", this));
+
+                const name = try res.allocator.dupe(u8, @tagName(v));
                 std.mem.replaceScalar(u8, name, '_', ' ');
                 return name;
             },
