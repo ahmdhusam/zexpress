@@ -13,8 +13,10 @@ pub const Req = struct {
     version: Version,
     headers: std.StringHashMap([]const u8),
     bodyString: ?[]const u8 = null,
+    params: Params = undefined,
 
     const Self = @This();
+    pub const Params = std.StringHashMap([]const u8);
 
     fn init(allocator: Allocator, httpStaticString: []u8) !*Self {
         const arena: *std.heap.ArenaAllocator = try allocator.create(std.heap.ArenaAllocator);
@@ -105,5 +107,9 @@ pub const Req = struct {
 
     fn setVersion(this: *Self, str: []const u8) !void {
         this.version = try Version.fromString(str);
+    }
+
+    pub fn setParams(this: *Self, params: Params) void {
+        this.params = params;
     }
 };

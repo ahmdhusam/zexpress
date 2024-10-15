@@ -5,15 +5,16 @@ const Allocator = std.mem.Allocator;
 
 pub const Req = @import("./req.zig").Req;
 pub const Res = @import("./res.zig").Res;
+const HttpRouting = @import("router.zig");
+const Router = HttpRouting.Router;
+pub const Handler = HttpRouting.Handler;
 
-pub const Middleware = *const fn (*Req, *Res) anyerror!void;
-pub const Handler = *const fn (*Req, *Res) anyerror!void;
 pub const ErrorHandler = *const fn (anyerror, *Req, *Res) void;
 
 pub const Server = struct {
     allocator: Allocator,
     streamServer: net.Server = undefined,
-    routes: std.StringHashMap(Route),
+    router: Router,
     options: Options,
 
     const Options = struct { reuse_port: bool };
@@ -25,7 +26,7 @@ pub const Server = struct {
 
         this.* = .{
             .allocator = alloc,
-            .routes = std.StringHashMap(Route).init(this.allocator),
+            .router = try Router.init(alloc),
             .options = options,
         };
 
@@ -35,11 +36,11 @@ pub const Server = struct {
     pub fn deinit(this: *Self) void {
         defer this.allocator.destroy(this);
         this.streamServer.deinit();
-        this.routes.deinit();
+        this.router.deinit();
     }
 
-    pub fn use(this: *Self, path: []const u8, comptime route: Route) !void {
-        try this.routes.put(path, route);
+    pub fn use(this: *Self, path: []const u8, comptime handler: Handler) !void {
+        try this.router.addRoute(path, handler);
     }
 
     pub fn listen(this: *Self, port: u16, errorHandler: ErrorHandler) !void {
@@ -87,17 +88,25 @@ pub const Server = struct {
         const res = Res.init(this.allocator) catch unreachable;
         defer res.deinit();
 
-        _ = res.setStatus(.Not_Found).setVersion(req.version);
+        _ = res.status(.Not_Found).setVersion(req.version);
 
         var pathIter = std.mem.split(u8, req.uri, "?");
         const path = pathIter.next() orelse @panic("path is required");
         // handlers
-        if (this.routes.get(path)) |handlers| {
-            _ = res.setStatus(.Ok);
+        if (this.router.matchRoute(path)) |route| {
+            _ = res.status(.Ok);
+            req.setParams(route.params);
 
-            handlers.execute(req, res) catch |err| {
+            route.handler.execute(req, res) catch |err| {
                 errorHandler(err, req, res);
             };
+        } else |err| switch (err) {
+            error.RouteNotFound => errorHandler(error.Not_Found, req, res),
+            else => {
+                const er = @errorName(err);
+                connection.stream.writer().print("HTTP/1.1 500 Internal Server Error\r\ncontent-length: {}\r\n\r\n{s}", .{ er.len, er }) catch unreachable;
+                return;
+            },
         }
 
         response(connection, res) catch unreachable;
@@ -105,7 +114,7 @@ pub const Server = struct {
 
     fn response(connection: net.Server.Connection, res: *Res) !void {
         const writer = connection.stream.writer();
-        try writer.print("{s} {} {s}\r\n", .{ res.version.toString(), res.status.toNumber(), try res.status.toString() });
+        try writer.print("{s} {} {s}\r\n", .{ res.version.toString(), res._status.toNumber(), try res._status.toString() });
 
         var headersIter = res.headers.iterator();
         while (headersIter.next()) |header| {
@@ -116,24 +125,5 @@ pub const Server = struct {
         try writer.print("\r\n", .{});
 
         if (res.body) |body| try writer.print("{s}", .{body});
-    }
-};
-
-pub const Route = struct {
-    handler: Handler,
-    middlewares: []const Middleware,
-
-    const Self = @This();
-
-    pub fn init(handler: Handler, middlewares: []const Middleware) Self {
-        return Route{ .handler = handler, .middlewares = middlewares };
-    }
-
-    fn execute(this: Self, req: *Req, res: *Res) !void {
-        for (this.middlewares) |middleware| {
-            try middleware(req, res);
-        }
-
-        try this.handler(req, res);
     }
 };

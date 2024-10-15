@@ -8,7 +8,7 @@ pub const Res = struct {
     arena: *std.heap.ArenaAllocator,
     allocator: Allocator,
     version: Version = undefined,
-    status: Status = undefined,
+    _status: Status = undefined,
     headers: std.StringHashMap([]const u8),
     body: ?[]const u8 = null,
 
@@ -42,8 +42,8 @@ pub const Res = struct {
         return this;
     }
 
-    pub fn setStatus(this: *Self, status: Status) *Self {
-        this.status = status;
+    pub fn status(this: *Self, _status: Status) *Self {
+        this._status = _status;
         return this;
     }
 
@@ -129,10 +129,10 @@ pub const Status = enum(u16) {
     pub fn toString(this: *Self) ![]const u8 {
         switch (this.*) {
             inline else => |v| {
-                const res: *Res = @alignCast(@fieldParentPtr("status", this));
+                const res: *Res = @alignCast(@fieldParentPtr("_status", this));
 
-                const name = try res.allocator.dupe(u8, @tagName(v));
-                std.mem.replaceScalar(u8, name, '_', ' ');
+                const name = try std.mem.replaceOwned(u8, res.allocator, @tagName(v), "_", " ");
+
                 return name;
             },
         }
