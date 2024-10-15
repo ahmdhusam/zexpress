@@ -9,13 +9,13 @@ The Zig build system has the concept of modules, which are other source files wr
 1. Create a new Zig project:
 
 ```shell
-zig init-exe
+zig init
 ```
 
 2. Add ZExpress as a dependency in your `build.zig.zon` file:
 
 ```shell
-zig fetch git+https://github.com/ahmdhusam/zexpress.git
+zig fetch --save git+https://github.com/ahmdhusam/zexpress.git
 ```
 
 3. Update your `build.zig` file to include ZExpress:
@@ -35,8 +35,9 @@ zig fetch git+https://github.com/ahmdhusam/zexpress.git
         .target = target,
         .optimize = optimize,
     }).module("zexpress");
-    exe.root_module.addImport("zexpress", zexpress_dep);
+    exe.root_module.addImport("zexpress", zexpress_module);
 
+    b.installArtifact(exe);
     // ... existing code ...
 }
 ```
@@ -64,10 +65,10 @@ pub fn main() !void {
 
     try app.use("/users", zexpress.Handler.init(&.{getMiddleware}, getHandler));
     // TODO: Name it set until the implementation of methods routers.
-    try app.use("/users/set", .{ .middlewares = &.{setMiddleware}, .handler = setHandler });
+    try app.use("/users/set", .{ .middlewares = &.{setMiddleware}, .handlerFn = setHandler });
 
     // New route with named parameter
-    try app.use("/users/:userId", .{ .middlewares = &.{}, .handler = getUserHandler });
+    try app.use("/users/:userId", .{ .middlewares = &.{}, .handlerFn = getUserHandler });
 
     try app.listen(8080, errorHandler);
 }
@@ -79,25 +80,25 @@ fn errorHandler(err: anyerror, req: *zexpress.Req, res: *zexpress.Res) void {
 
     // Has the responsibility to handle all errors.
     switch (err) {
-         else => |errValue| {
+        else => |errValue| {
             const errName = @errorName(errValue);
             const message = std.mem.replaceOwned(u8, res.allocator, errName, "_", " ") catch unreachable;
 
-            _ = res.json(.{ .status = res.status.toNumber(), .message = message }) catch unreachable;
+            _ = res.json(.{ .status = res._status.toNumber(), .message = message }) catch unreachable;
         },
     }
 }
 
 fn setMiddleware(req: *zexpress.Req, res: *zexpress.Res) !void {
     if (req.method != .POST) {
-        _ = res.setStatus(.Not_Found);
+        _ = res.status(.Not_Found);
         return error.Not_Found;
     }
 
     const body = try req.bodyAs(*const UserModel);
 
     if (body.health > 100) {
-        _ = res.setStatus(.Bad_Request);
+        _ = res.status(.Bad_Request);
         return error.health_should_be_less_than_or_eql_100;
     }
 }
@@ -107,12 +108,12 @@ fn setHandler(req: *zexpress.Req, res: *zexpress.Res) !void {
 
     try STORAGE.put(body.userId, body.health);
 
-    _ = try res.setStatus(.Ok).json(.{ .message = "The health was successfully stored." });
+    _ = try res.status(.Ok).json(.{ .message = "The health was successfully stored." });
 }
 
 fn getMiddleware(req: *zexpress.Req, res: *zexpress.Res) !void {
     if (req.method != .GET) {
-        _ = res.setStatus(.Not_Found);
+        _ = res.status(.Not_Found);
         return error.Not_Found;
     }
 }
@@ -127,18 +128,16 @@ fn getHandler(req: *zexpress.Req, res: *zexpress.Res) !void {
         try list.append(.{ .userId = user.key_ptr.*, .health = user.value_ptr.* });
     }
 
-    _ = try res.setStatus(.Ok).json(.{ .data = try list.toOwnedSlice() });
+    _ = try res.status(.Ok).json(.{ .data = try list.toOwnedSlice() });
 }
 
 fn getUserHandler(req: *zexpress.Req, res: *zexpress.Res) !void {
     const userId = try std.fmt.parseInt(u64, req.params.get("userId").?, 10);
-    
+
     if (STORAGE.get(userId)) |health| {
-        _ = try res.setStatus(.Ok).json(.{
-            .data = .{ .userId = userId, .health = health }
-        });
+        _ = try res.status(.Ok).json(.{ .data = .{ .userId = userId, .health = health } });
     } else {
-        _ = res.setStatus(.Not_Found);
+        _ = res.status(.Not_Found);
         return error.User_Not_Found;
     }
 }
